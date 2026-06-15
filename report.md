@@ -55,3 +55,75 @@ worth noting:
 
 All three failure modes are detectable signals the verify node can act on,
 which directly motivates the agent loop in Phase 3.
+
+### Screenshot - TBD
+
+---
+
+## Phase 2: Observability Dashboard
+
+The dashboard is organized around three questions a person on call needs to answer immediately:
+**Is the system slow? Is it keeping up? Is memory OK?**
+
+---
+
+### Metric types and PromQL patterns
+
+vLLM exposes three metric types, each requiring a different PromQL treatment:
+
+- **Gauge**: a live snapshot value (e.g. queue depth). Read directly, no transformation.
+- **Counter**: monotonically increasing total (e.g. requests served). Wrap in `rate(metric[1m])` to get a per-second rate.
+- **Histogram**: records a distribution across buckets (e.g. latency). Use `histogram_quantile(0.95, rate(metric_bucket[5m]))` to get a percentile. Latency panels use a longer `[5m]` window than throughput panels (`[1m]`) because percentile estimates need more samples to be statistically stable.
+
+---
+
+### Why these specific metrics
+
+#### Latency
+
+Three panels: E2E latency (P50/P95/P99), TTFT, TPOT.
+
+E2E latency is the SLO metric. TTFT (time to first token) and TPOT (time per output token) decompose *where* that time goes: 
+- E2E ≈ TTFT + (output_tokens × TPOT). 
+- TTFT measures prefill cost and queue wait. 
+- TPOT measures decode speed.
+
+Together they answer not just "is it slow" but "slow *where*", which is what makes the dashboard useful for diagnosis, not just alerting.
+
+#### Throughput
+
+Four panels: requests running, generated tokens/sec, request throughput (req/s), queue depth.
+
+- Queue depth (`num_requests_waiting`) is the most actionable single metric: if it grows, the system is overloaded, full stop. 
+- Request throughput gives the achieved RPS to compare against the load test target.
+- Requests running and generated tokens/sec give context on what the system is actually doing at that moment.
+
+#### KV Cache
+
+Two panels: GPU KV cache usage (%), preemption rate.
+
+- KV cache usage shows headroom or how close the system is to the ceiling. 
+- Preemption rate is the alarm: it becomes nonzero only when the cache already ran out and vLLM is paying the cost by evicting and recomputing sequences. Each preemption shows up as a P99 spike in the E2E latency panel, which is why these two sections are connected.
+
+---
+
+### Reading the dashboards: Debugging workflow
+
+Start at the top of the dashboard and go down.
+
+**E2E latency is high →**
+- TTFT high, TPOT normal → bottleneck is before decoding: requests are queuing or prefill is slow. Check queue depth.
+- TPOT high, TTFT normal → bottleneck is during decoding: too many sequences decoded simultaneously, memory bandwidth saturated. Check requests running.
+- P95 fine but P99 spikes intermittently → check preemption rate: cache evictions cause occasional stalls.
+
+**Queue depth is growing →**
+Arrival rate exceeds serving rate. Either the model is too slow per request (TPOT) or the concurrency limit (`--max-num-seqs`) is the ceiling. Check KV cache: if it's near 100%, that's what's preventing vLLM from starting new requests.
+
+**KV cache near 100% or preemptions nonzero →**
+Cache pressure. Fix: reduce `--max-num-seqs` (fewer concurrent sequences) or reduce `--max-model-len` (smaller KV blocks per token). Preemptions are more urgent than just queuing because they waste GPU compute and cause latency spikes.
+
+---
+
+### Screenshots - TBD
+
+- `screenshots/grafana_serving.png` — full dashboard reacting to a burst of requests *(H100)*
