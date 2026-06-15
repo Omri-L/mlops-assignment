@@ -48,9 +48,10 @@ Set ok to false if any of the following apply:
 - The columns returned clearly do not match what the question asked for
 
 Set "issue" according to "ok" result:
-- If ok is false, set issue to a sentence that describes the problem AND \ 
-suggests the most likely cause
-- If ok is true, leave issue as an empty string.
+- If "ok" is false, set issue to a sentence that quotes the exact SQL fragment 
+most likely responsible (e.g. a specific WHERE condition, column name, or 
+aggregate) and describes why it is probably wrong.
+- If "ok" is true, leave issue as an empty string.
 """
 
 VERIFY_USER = """\
@@ -76,7 +77,8 @@ Rules:
 - Do not include any explanation or commentary.
 - Use only tables and columns that exist in the schema.
 - Use correct SQLite syntax (e.g. STRFTIME for dates).
-- Address the specific issue described. Do not rewrite parts that were correct.
+- Focus your fix on the exact SQL fragment quoted in the issue. Change that 
+  fragment and leave the rest of the query untouched.
 """
 
 REVISE_USER = """\
