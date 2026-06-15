@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 import re
+import json
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -54,14 +55,45 @@ class AgentState:
     history: list[dict[str, Any]] = field(default_factory=list)
 
 
-def llm() -> ChatOpenAI:
+def llm(temperature: float = 0.0) -> ChatOpenAI:
     """Chat client pointed at VLLM_BASE_URL (your local vLLM by default)."""
     return ChatOpenAI(
         model=VLLM_MODEL,
         base_url=VLLM_BASE_URL,
         api_key=LLM_API_KEY,
-        temperature=0.0,
+        temperature=temperature,
     )
+
+
+# ---- Helpers ----------------------------------------------------------
+
+def _parse_json(text: str) -> dict:
+    """Extract a JSON object from LLM output, handling markdown fences and prose.
+
+    Falls back to {"ok": True, "issue": ""} on parse failure so a broken
+    verify response never stalls the loop indefinitely (fail open).
+    """
+    # Try raw JSON first
+    try:
+        return json.loads(text.strip())
+    except json.JSONDecodeError:
+        pass
+    # Try extracting from markdown fences: ```json { ... } ```
+    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if fenced:
+        try:
+            return json.loads(fenced.group(1))
+        except json.JSONDecodeError:
+            pass
+    # Try finding any bare JSON object in the text
+    obj = re.search(r"\{[^{}]*\}", text, re.DOTALL)
+    if obj:
+        try:
+            return json.loads(obj.group(0))
+        except json.JSONDecodeError:
+            pass
+    # Nothing worked — treat as ok so we don't loop forever
+    return {"ok": True, "issue": ""}
 
 
 # ---- Nodes ------------------------------------------------------------
@@ -82,14 +114,9 @@ def _extract_sql(text: str) -> str:
 
 
 def generate_sql_node(state: AgentState) -> dict:
-    """Worked example - the other LLM nodes follow this same shape.
-
-    Build messages from the prompts, call the shared llm(), extract the SQL,
+    """Build messages from the prompts, call the shared llm(), extract the SQL,
     and return only the state fields you changed. `iteration` is bumped here
     (and in revise) so route_after_verify can enforce MAX_ITERATIONS.
-
-    This node is wired and ready; fill in GENERATE_SQL_SYSTEM / GENERATE_SQL_USER
-    in prompts.py to make it produce real queries.
     """
     response = llm().invoke([
         ("system", prompts.GENERATE_SQL_SYSTEM),
@@ -107,37 +134,61 @@ def generate_sql_node(state: AgentState) -> dict:
 
 
 def execute_node(state: AgentState) -> dict:
-    """Provided. Runs the SQL and stores the result."""
+    """Runs the SQL and stores the result."""
     return {"execution": execute_sql(state.db_id, state.sql)}
 
 
 def verify_node(state: AgentState) -> dict:
     """Decide whether state.execution plausibly answers state.question.
 
-    Follow the generate_sql_node pattern: build messages from the VERIFY_*
-    prompts, call llm(), parse the reply. Ask the model for a small JSON object
-    like {"ok": bool, "issue": str} and parse it defensively - the model may
-    wrap it in prose or fences. state.execution.render() gives you a compact
-    view of the rows or error to feed into the prompt.
+    Build messages from the VERIFY_* prompts, call llm(), parse the reply. 
+    Ask the model for a small JSON object like {"ok": bool, "issue": str} and 
+    parse it defensively.
 
     Return: {"verify_ok": <bool>, "verify_issue": <str>}.
-    What counts as "not plausible" is yours to define - see the Phase 3 targets
-    in the README.
+
     """
-    raise NotImplementedError("Implement in Phase 3")
+    response = llm().invoke([
+        ("system", prompts.VERIFY_SYSTEM),
+        ("user", prompts.VERIFY_USER.format(
+            question=state.question,
+            sql=state.sql,
+            result=state.execution.render(),
+        )),
+    ])
+
+    print(f"\n[verify] raw: {response.content}")      # ← add this
+    parsed = _parse_json(response.content)
+    print(f"[verify] parsed: {parsed}")               # ← add this
+    return {
+        "verify_ok": bool(parsed.get("ok", True)),
+        "verify_issue": str(parsed.get("issue", "")),
+    }
 
 
 def revise_node(state: AgentState) -> dict:
     """Produce a revised SQL query given state.verify_issue and the prior attempt.
 
-    Same shape as generate_sql_node, but the prompt should include the failing
-    SQL, its execution result, and the verifier's complaint so the model can fix
-    it. Bump the iteration counter the same way generate_sql_node does so the
-    loop terminates.
-
     Return: {"sql": <str>, "iteration": state.iteration + 1, ...}.
     """
-    raise NotImplementedError("Implement in Phase 3")
+    response = llm(temperature=0.7).invoke([
+        ("system", prompts.REVISE_SYSTEM),
+        ("user", prompts.REVISE_USER.format(
+            schema=state.schema,
+            question=state.question,
+            sql=state.sql,
+            result=state.execution.render(),
+            issue=state.verify_issue,
+        )),
+    ])
+
+    sql = _extract_sql(response.content)
+
+    return {
+        "sql": sql,
+        "iteration": state.iteration + 1,
+        "history": state.history + [{"node": "revise", "sql": sql}],
+    }
 
 
 def route_after_verify(state: AgentState) -> str:
@@ -146,7 +197,9 @@ def route_after_verify(state: AgentState) -> str:
     Two reasons to end: the verifier was happy (state.verify_ok), or you've hit
     the iteration cap (state.iteration >= MAX_ITERATIONS). Otherwise, revise.
     """
-    raise NotImplementedError("Implement in Phase 3")
+    if state.verify_ok or state.iteration >= MAX_ITERATIONS:
+        return "end"
+    return "revise"
 
 
 # ---- Graph wiring -----------------------------------------------------

@@ -8,6 +8,7 @@ design alongside their nodes - pick whatever placeholders your nodes pass in.
 Filling these in is part of Phase 3.
 """
 
+## Generate SQL prompts
 GENERATE_SQL_SYSTEM = """ \
 You are an expert SQL assistant. Given a database schema and a question, \
 write a single valid SQLite query that answers the question.
@@ -20,22 +21,83 @@ Rules:
 - If the question requires a JOIN, use the foreign keys shown in the schema.
 """
 
-# Available placeholders: {schema}, {question}
 GENERATE_SQL_USER = """\
 Schema:
 {schema}
 
 Question: {question}
 
+Write the SQLite query that answers the question.
 SQL:
 """
 
+## Verify SQL prompts
+VERIFY_SYSTEM = """\
+You are a strict SQL result verifier. Given a question, a SQL query, and the result \
+of running it, decide whether the result plausibly answers the question.
 
-VERIFY_SYSTEM = ""
+Respond with ONLY a JSON object in this exact format:
+{"ok": true, "issue": ""}
 
-VERIFY_USER = ""
+Set ok to false if any of the following apply:
+- The SQL produced an error
+- The result has 0 rows but the question implies rows should exist
+- A COUNT or SUM aggregate returns 0 when the question asks "how many" or
+  implies that matching records should exist
+- The result contains only NULL values where a concrete value is expected
+- The columns returned clearly do not match what the question asked for
 
+Set "issue" according to "ok" result:
+- If ok is false, set issue to a sentence that describes the problem AND \ 
+suggests the most likely cause
+- If ok is true, leave issue as an empty string.
+"""
 
-REVISE_SYSTEM = ""
+VERIFY_USER = """\
+Question: {question}
 
-REVISE_USER = ""
+SQL:
+{sql}
+
+Result:
+{result}
+
+JSON:
+"""
+
+## Revise SQL prompts
+REVISE_SYSTEM = """\
+You are an expert SQL assistant. A SQL query failed to correctly answer a \
+question. Given the schema, the question, the failing query, its result, and \
+what went wrong, write a corrected SQLite query.
+
+Rules:
+- Return ONLY the corrected SQL query, wrapped in ```sql ... ``` fences.
+- Do not include any explanation or commentary.
+- Use only tables and columns that exist in the schema.
+- Use correct SQLite syntax (e.g. STRFTIME for dates).
+- Address the specific issue described. Do not rewrite parts that were correct.
+"""
+
+REVISE_USER = """\
+The following SQL query produced an incorrect result and must be fixed.
+
+Problem identified:
+{issue}
+
+Previous (incorrect) SQL:
+{sql}
+
+Result it produced:
+{result}
+
+You MUST write a new SQL query that is different from the previous one and \
+directly addresses the problem described above.
+
+Schema:
+{schema}
+
+Question: {question}
+
+Fixed SQL:
+"""
