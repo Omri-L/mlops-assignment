@@ -157,9 +157,7 @@ def verify_node(state: AgentState) -> dict:
         )),
     ])
 
-    print(f"\n[verify] raw: {response.content}")      # ← add this
     parsed = _parse_json(response.content)
-    print(f"[verify] parsed: {parsed}")               # ← add this
     return {
         "verify_ok": bool(parsed.get("ok", True)),
         "verify_issue": str(parsed.get("issue", "")),
