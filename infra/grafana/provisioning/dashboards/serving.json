@@ -1,8 +1,9 @@
 {
-  "title": "vLLM serving",
+  "title": "vLLM Serving Health",
+  "description": "Three questions: is it slow? is it keeping up? is memory OK?",
   "uid": "vllm-serving",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "5s",
   "tags": ["vllm", "starter"],
   "time": {
@@ -17,12 +18,133 @@
     "list": []
   },
   "panels": [
+
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Is it slow?",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "E2E request latency (5m window)",
+      "description": "End-to-end latency from request arrival to last token. P95 is the SLO target (under 5s). P99 shows the absolute worst-tail experience. If P95 is fine but P99 is not, there is an occasional stall: look at queue depth and KV cache.",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, rate(vllm:e2e_request_latency_seconds_bucket[5m]))",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.50, rate(vllm:e2e_request_latency_seconds_bucket[5m]))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "C",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.99, rate(vllm:e2e_request_latency_seconds_bucket[5m]))",
+          "legendFormat": "p99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "TTFT - Time to first token (5m window)",
+      "description": "Time from request arrival to the first output token. Measures prefill cost + queue wait time. High TTFT means the GPU is spending a lot of time processing input tokens (your schema prompts are 1.5-3K tokens) or requests are queued. If TTFT ≈ E2E latency, the outputs are short and decoding is fast, meaning that TTFT is the bottleneck.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, rate(vllm:time_to_first_token_seconds_bucket[5m]))",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.50, rate(vllm:time_to_first_token_seconds_bucket[5m]))",
+          "legendFormat": "p50"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "TPOT - Time per output token (5m window)",
+      "description": "Inter-token latency during decode, this is the time between consecutive output tokens. Low TPOT means fast decoding. If TPOT rises under load, the decode batch is too large and memory bandwidth is saturated. For short SQL outputs, TPOT contributes less than TTFT to E2E latency, but a spike here still hurts if the model produces longer outputs.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, rate(vllm:time_per_output_token_seconds_bucket[5m]))",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.50, rate(vllm:time_per_output_token_seconds_bucket[5m]))",
+          "legendFormat": "p50"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+
+    {
+      "id": 11,
+      "type": "row",
+      "title": "Is it keeping up?",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 }
+    },
     {
       "id": 1,
       "type": "timeseries",
       "title": "Requests running",
       "description": "Active requests being served by vLLM right now.",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
@@ -49,7 +171,7 @@
       "type": "timeseries",
       "title": "Generated tokens / sec",
       "description": "Rate of output tokens produced by vLLM, smoothed over 1m.",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
@@ -70,6 +192,123 @@
         "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
         "tooltip": { "mode": "multi", "sort": "desc" }
       }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Request throughput",
+      "description": "Completed requests per second. This the achieved RPS (the SLO requires 10+). If this is lower than required RPS, check queue depth: requests are accumulating faster than they're being served.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "rate(vllm:request_success_total[1m])",
+          "legendFormat": "requests/s"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Queue depth (requests waiting)",
+      "description": "Requests that have arrived but not yet started, waiting for a slot. Should be near 0 at healthy load. A growing queue means arrival rate exceeds serving rate. Also rises when the KV cache is full and vLLM can't start new requests. Watch this alongside E2E latency and KV cache usage.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "vllm:num_requests_waiting",
+          "legendFormat": "waiting"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+
+    {
+      "id": 12,
+      "type": "row",
+      "title": "Is memory OK?",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 34 }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "GPU KV cache usage",
+      "description": "Fraction of GPU KV cache blocks in use (0-100%). The KV cache holds key-value tensors for every active token. When full, vLLM must queue or evict requests: both cause latency spikes. If this approaches 100% under load, we should reduce max-num-seqs or consider quantization to shrink per-token cache size.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 35 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "vllm:gpu_cache_usage_perc * 100",
+          "legendFormat": "cache used %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Preemption rate",
+      "description": "Sequences evicted from KV cache per second. Should be zero under normal load. vLLM preempts when the KV cache is full: it pauses a sequence, frees its cache blocks, and recomputes them later. Each preemption wastes GPU compute and causes latency spikes visible in P99 E2E latency. Non-zero here means KV cache pressure and we should reduce max-num-seqs or lower concurrency.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 35 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "rate(vllm:num_preemptions_total[1m])",
+          "legendFormat": "preemptions/s"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
     }
+
   ]
 }
