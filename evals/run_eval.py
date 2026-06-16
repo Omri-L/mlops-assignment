@@ -56,9 +56,82 @@ def matches(gold_rows: list[tuple] | None, pred_rows: list[tuple] | None) -> boo
 
 # ---------- Implement these (Phase 5) ----------------------------------
 
+MAX_EVAL_ITERATIONS = 3  # must match MAX_ITERATIONS in agent/graph.py
+
+
 def eval_one(question: dict, agent_url: str) -> dict:
-    """Score one question. Return a dict capturing per-iteration correctness."""
-    raise NotImplementedError("Phase 5")
+    """Score one question. Return a dict capturing per-iteration correctness.
+
+    For each of the MAX_EVAL_ITERATIONS slots we record whether the SQL the
+    agent had at that point (after carry-forward) produced the correct rows.
+    """
+    q = question["question"]
+    db_id = question["db_id"]
+    gold_sql = question["gold_sql"]
+
+    # Run the gold SQL once to get the reference row set.
+    gold_ok, gold_rows, gold_err = run_sql(db_id, gold_sql)
+
+    # Call the agent.
+    try:
+        resp = httpx.post(
+            agent_url,
+            json={"question": q, "db": db_id},
+            timeout=120.0,
+        )
+        resp.raise_for_status()
+        agent_resp = resp.json()
+    except Exception as e:  # noqa: BLE001
+        return {
+            "question": q,
+            "db_id": db_id,
+            "gold_sql": gold_sql,
+            "gold_ok": gold_ok,
+            "gold_error": gold_err,
+            "agent_iterations": 0,
+            "agent_ok": False,
+            "iter_results": [],
+            "error": str(e),
+        }
+
+    # history: [{"node": "generate_sql"|"revise", "sql": "..."}, ...]
+    history = agent_resp.get("history", [])
+    iter_sqls = [entry["sql"] for entry in history]
+
+    # Apply carry-forward: fill up to MAX_EVAL_ITERATIONS slots.
+    # If the agent stopped early (verify said ok at iter j < MAX), we reuse
+    # that SQL for all later slots.
+    filled_sqls: list[str] = []
+    for k in range(MAX_EVAL_ITERATIONS):
+        if k < len(iter_sqls):
+            filled_sqls.append(iter_sqls[k])
+        else:
+            filled_sqls.append(filled_sqls[-1] if filled_sqls else "")
+
+    # Evaluate each slot against the gold row set.
+    iter_results = []
+    for k, sql in enumerate(filled_sqls, 1):
+        pred_ok, pred_rows, pred_err = run_sql(db_id, sql)
+        correct = matches(gold_rows, pred_rows) if (gold_ok and pred_ok) else False
+        iter_results.append({
+            "iter": k,
+            "sql": sql,
+            "correct": correct,
+            "sql_ok": pred_ok,
+            "error": pred_err,
+        })
+
+    return {
+        "question": q,
+        "db_id": db_id,
+        "gold_sql": gold_sql,
+        "gold_ok": gold_ok,
+        "gold_error": gold_err,
+        "agent_iterations": agent_resp.get("iterations", 0),
+        "agent_ok": agent_resp.get("ok", False),
+        "iter_results": iter_results,
+        "error": None,
+    }
 
 
 def summarize(results: list[dict]) -> dict:
@@ -70,7 +143,35 @@ def summarize(results: list[dict]) -> dict:
     The agent stopped emitting; whatever it had at termination is what
     would have been served had we polled at iteration k.
     """
-    raise NotImplementedError("Phase 5")
+    total = len(results)
+    if total == 0:
+        return {"total": 0}
+
+    # Per-iteration pass rate.
+    per_iter: dict[str, float] = {}
+    for k in range(1, MAX_EVAL_ITERATIONS + 1):
+        correct = sum(
+            1 for r in results
+            if any(ir["iter"] == k and ir["correct"] for ir in r.get("iter_results", []))
+        )
+        per_iter[f"iter_{k}"] = round(correct / total, 4)
+
+    # Overall = final iteration (the SQL that was actually served).
+    overall = per_iter.get(f"iter_{MAX_EVAL_ITERATIONS}", 0.0)
+
+    # How many questions triggered at least one revise.
+    revise_count = sum(1 for r in results if r.get("agent_iterations", 0) > 1)
+
+    avg_iterations = sum(r.get("agent_iterations", 0) for r in results) / total
+
+    return {
+        "total": total,
+        "overall_pass_rate": overall,
+        "per_iter_pass_rate": per_iter,
+        "revise_triggered_count": revise_count,
+        "revise_triggered_rate": round(revise_count / total, 4),
+        "avg_iterations": round(avg_iterations, 2),
+    }
 
 
 # ---------- Main (provided) --------------------------------------------
