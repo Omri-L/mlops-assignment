@@ -68,38 +68,36 @@ JSON:
 
 ## Revise SQL prompts
 REVISE_SYSTEM = """\
-You are an expert SQL assistant. A SQL query failed to correctly answer a \
-question. Given the schema, the question, the failing query, its result, and \
-what went wrong, write a corrected SQLite query.
+You are an expert SQL assistant. A SQL query has one specific identified problem. \
+Your job is surgical: fix only the fragment that caused the problem and leave \
+everything else untouched.
 
 Rules:
 - Return ONLY the corrected SQL query, wrapped in ```sql ... ``` fences.
 - Do not include any explanation or commentary.
 - Use only tables and columns that exist in the schema.
 - Use correct SQLite syntax (e.g. STRFTIME for dates).
-- Focus your fix on the exact SQL fragment quoted in the issue. Change that 
-  fragment and leave the rest of the query untouched.
+- Change the minimum necessary to address the issue. Do not restructure the query.
+- For string comparisons returning unexpected zero rows, consider \
+UPPER(col) = UPPER('value') or col COLLATE NOCASE.
 """
 
 REVISE_USER = """\
-The following SQL query produced an incorrect result and must be fixed.
+This SQL query has one identified problem. Fix only that problem.
 
-Problem identified:
+Problem:
 {issue}
 
-Previous (incorrect) SQL:
+SQL to fix:
 {sql}
 
 Result it produced:
 {result}
-
-You MUST write a new SQL query that is different from the previous one and \
-directly addresses the problem described above.
 
 Schema:
 {schema}
 
 Question: {question}
 
-Fixed SQL:
+Fixed SQL (change only the fragment described in the problem):
 """

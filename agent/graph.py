@@ -169,7 +169,7 @@ def revise_node(state: AgentState) -> dict:
 
     Return: {"sql": <str>, "iteration": state.iteration + 1, ...}.
     """
-    response = llm(temperature=0.7).invoke([
+    response = llm(temperature=0.0).invoke([
         ("system", prompts.REVISE_SYSTEM),
         ("user", prompts.REVISE_USER.format(
             schema=state.schema,
