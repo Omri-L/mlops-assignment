@@ -12,11 +12,11 @@ exec uv run python -m vllm.entrypoints.openai.api_server \
     --host 0.0.0.0 \
     --port 8000 \
     --dtype bfloat16 \
-    --max-model-len 8192 \
+    --max-model-len 4096 \
     --gpu-memory-utilization 0.92 \
-    --max-num-seqs 64 \
+    --max-num-seqs 128 \
     --enable-chunked-prefill \
     --enable-prefix-caching \
     --trust-remote-code \
     --disable-log-requests
-    # --quantization fp8   ← uncomment and test in Phase 6 if latency is tight
+    # --quantization fp8
