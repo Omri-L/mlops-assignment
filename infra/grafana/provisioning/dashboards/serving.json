@@ -29,27 +29,27 @@
     {
       "id": 3,
       "type": "timeseries",
-      "title": "E2E request latency (5m window)",
-      "description": "End-to-end latency from request arrival to last token. P95 is the SLO target (under 5s). P99 shows the absolute worst-tail experience. If P95 is fine but P99 is not, there is an occasional stall: look at queue depth and KV cache.",
+      "title": "E2E request latency",
+      "description": "End-to-end latency from request arrival to last token. P99 shows the absolute worst-tail experience. If P95 is fine but P99 is not, there is an occasional stall: look at queue depth and KV cache.",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "histogram_quantile(0.95, rate(vllm:e2e_request_latency_seconds_bucket[5m]))",
+          "expr": "histogram_quantile(0.95, rate(vllm:e2e_request_latency_seconds_bucket[1m]))",
           "legendFormat": "p95"
         },
         {
           "refId": "B",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "histogram_quantile(0.50, rate(vllm:e2e_request_latency_seconds_bucket[5m]))",
+          "expr": "histogram_quantile(0.50, rate(vllm:e2e_request_latency_seconds_bucket[1m]))",
           "legendFormat": "p50"
         },
         {
           "refId": "C",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "histogram_quantile(0.99, rate(vllm:e2e_request_latency_seconds_bucket[5m]))",
+          "expr": "histogram_quantile(0.99, rate(vllm:e2e_request_latency_seconds_bucket[1m]))",
           "legendFormat": "p99"
         }
       ],
@@ -68,7 +68,7 @@
     {
       "id": 4,
       "type": "timeseries",
-      "title": "TTFT - Time to first token (5m window)",
+      "title": "TTFT - Time to first token",
       "description": "Time from request arrival to the first output token. Measures prefill cost + queue wait time. High TTFT means the GPU is spending a lot of time processing input tokens (your schema prompts are 1.5-3K tokens) or requests are queued. If TTFT ≈ E2E latency, the outputs are short and decoding is fast, meaning that TTFT is the bottleneck.",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -76,13 +76,13 @@
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "histogram_quantile(0.95, rate(vllm:time_to_first_token_seconds_bucket[5m]))",
+          "expr": "histogram_quantile(0.95, rate(vllm:time_to_first_token_seconds_bucket[1m]))",
           "legendFormat": "p95"
         },
         {
           "refId": "B",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "histogram_quantile(0.50, rate(vllm:time_to_first_token_seconds_bucket[5m]))",
+          "expr": "histogram_quantile(0.50, rate(vllm:time_to_first_token_seconds_bucket[1m]))",
           "legendFormat": "p50"
         }
       ],
@@ -101,7 +101,7 @@
     {
       "id": 5,
       "type": "timeseries",
-      "title": "TPOT - Time per output token (5m window)",
+      "title": "TPOT - Time per output token",
       "description": "Inter-token latency during decode, this is the time between consecutive output tokens. Low TPOT means fast decoding. If TPOT rises under load, the decode batch is too large and memory bandwidth is saturated. For short SQL outputs, TPOT contributes less than TTFT to E2E latency, but a spike here still hurts if the model produces longer outputs.",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -109,13 +109,13 @@
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "histogram_quantile(0.95, rate(vllm:time_per_output_token_seconds_bucket[5m]))",
+          "expr": "histogram_quantile(0.95, rate(vllm:time_per_output_token_seconds_bucket[1m]))",
           "legendFormat": "p95"
         },
         {
           "refId": "B",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "histogram_quantile(0.50, rate(vllm:time_per_output_token_seconds_bucket[5m]))",
+          "expr": "histogram_quantile(0.50, rate(vllm:time_per_output_token_seconds_bucket[1m]))",
           "legendFormat": "p50"
         }
       ],
