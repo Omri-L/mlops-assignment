@@ -205,7 +205,7 @@
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "rate(vllm:request_success_total[1m])",
-          "legendFormat": "requests/s"
+          "legendFormat": "{{finished_reason}}"
         }
       ],
       "fieldConfig": {
